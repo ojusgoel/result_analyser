@@ -6,13 +6,16 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
-import pdfplumber
-from flask import Flask, request, send_file
-
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+try:
+    import pandas as pd
+    import pdfplumber
+    from flask import Flask, request, send_file
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+except ImportError as e:
+    print(f"IMPORT ERROR: {e}", flush=True)
+    raise
 
 app = Flask(__name__)
 
@@ -264,46 +267,55 @@ def _html_page(message: str = "") -> str:
 
 @app.route("/", methods=["GET"])
 def index():
-    return _html_page(), 200
+    try:
+        return _html_page(), 200
+    except Exception as e:
+        print(f"GET / ERROR: {e}", flush=True)
+        return _html_page(f"Error: {str(e)}"), 500
 
 
 @app.route("/", methods=["POST"])
 def process():
-    uploaded = request.files.get("pdf")
-    if uploaded is None or not uploaded.filename:
-        return _html_page("Please choose a PDF file."), 400
-
-    ext = Path(uploaded.filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        return _html_page("Only .pdf files are allowed."), 400
-
-    uploaded.stream.seek(0, io.SEEK_END)
-    size = uploaded.stream.tell()
-    uploaded.stream.seek(0)
-    if size <= 0 or size > MAX_FILE_SIZE:
-        return (
-            _html_page(
-                f"File size must be between 1 byte and {MAX_FILE_SIZE // (1024 * 1024)} MB."
-            ),
-            400,
-        )
-
-    temp_dir = tempfile.mkdtemp(prefix="vercel_pdf_")
-    in_path = os.path.join(temp_dir, "input.pdf")
-    out_name = _sanitize_filename(Path(uploaded.filename).stem + "_Analysis.pdf")
-    out_path = os.path.join(temp_dir, out_name)
-
     try:
-        uploaded.save(in_path)
-        _extract_and_build_report(in_path, out_path)
+        uploaded = request.files.get("pdf")
+        if uploaded is None or not uploaded.filename:
+            return _html_page("Please choose a PDF file."), 400
 
-        return send_file(out_path, as_attachment=True, download_name=out_name)
+        ext = Path(uploaded.filename).suffix.lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            return _html_page("Only .pdf files are allowed."), 400
 
-    except Exception as exc:
-        error_msg = f"Processing failed: {str(exc)}"
-        print(f"ERROR: {error_msg}", flush=True)
-        return _html_page(error_msg), 400
+        uploaded.stream.seek(0, io.SEEK_END)
+        size = uploaded.stream.tell()
+        uploaded.stream.seek(0)
+        if size <= 0 or size > MAX_FILE_SIZE:
+            return (
+                _html_page(
+                    f"File size must be between 1 byte and {MAX_FILE_SIZE // (1024 * 1024)} MB."
+                ),
+                400,
+            )
 
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        temp_dir = tempfile.mkdtemp(prefix="vercel_pdf_")
+        in_path = os.path.join(temp_dir, "input.pdf")
+        out_name = _sanitize_filename(Path(uploaded.filename).stem + "_Analysis.pdf")
+        out_path = os.path.join(temp_dir, out_name)
+
+        try:
+            uploaded.save(in_path)
+            _extract_and_build_report(in_path, out_path)
+
+            return send_file(out_path, as_attachment=True, download_name=out_name)
+
+        except Exception as exc:
+            error_msg = f"Processing failed: {str(exc)}"
+            print(f"ERROR: {error_msg}", flush=True)
+            return _html_page(error_msg), 400
+
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+    
+    except Exception as e:
+        print(f"POST / ERROR: {e}", flush=True)
+        return _html_page(f"Error: {str(e)}"), 500
 
