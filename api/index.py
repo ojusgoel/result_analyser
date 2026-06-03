@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 import pdfplumber
-from flask import Flask, render_string, request, send_file
+from flask import Flask, request, send_file
 
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
@@ -300,11 +300,10 @@ def process():
         return send_file(out_path, as_attachment=True, download_name=out_name)
 
     except Exception as exc:
-        return _html_page(f"Processing failed: {str(exc)}"), 400
+        error_msg = f"Processing failed: {str(exc)}"
+        print(f"ERROR: {error_msg}", flush=True)
+        return _html_page(error_msg), 400
 
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-
-if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=3000)
